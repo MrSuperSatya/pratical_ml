@@ -204,11 +204,11 @@ removeColumns &lt;- colSums(is.na(df.train.raw) | df.train.raw == '') &gt; maxNA
 df.train &lt;- df.train.raw[,-removeColumns]
 df.test  &lt;- df.test.raw[,-removeColumns]
 
-# Remove first column because of the name
+# Remove first column because of the name (not useful for prediction)
 df.train &lt;- df.train[, -1]
 df.test &lt;- df.test[, -1]
 
-# Remove timeptamp variable
+# Remove timeptamp variable (not useful for prediction)
 removeColumns &lt;- grep(&quot;timestamp&quot;, names(df.train))
 df.train &lt;- df.train[, -removeColumns]
 df.test &lt;- df.test[, -removeColumns]
@@ -218,26 +218,20 @@ df.train &lt;- data.frame(data.matrix(df.train))
 df.test &lt;- data.frame(data.matrix(df.test))
 #sapply(df.train, class)
 
-# Fill NAs with mean
+# Fill NAs with mean for training set and zero for test set
 NA2mean &lt;- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
 NA2zero &lt;- function(x) replace(x, is.na(x), 0)
-
 df.train[] &lt;- lapply(df.train, NA2mean)
 df.test[] &lt;- lapply(df.test, NA2zero)
 df.train$classe &lt;- as.factor(df.train.raw$classe)</code></pre>
-<p>First, I load data from the CSV files given by Cousera. Then I remove the columns that contains more than 1/5 of the total number of rows. I also remove the first column which name of the participants. I also remove the ‘timestamp’ columns that are not useful for prediction. Finally, we fill all NAs with the mean values.</p>
+<p>First, I load data from the CSV files given by Cousera. Then I remove the columns that contains more than 1/5 of the total number of rows. I also remove the first column which name of the participants. I also remove the ‘timestamp’ columns that are not useful for prediction. Finally, we fill all NAs with the mean values for training set and I fill zero for testing set.</p>
 </div>
 <div id="building-prediction-model" class="section level2">
 <h2>3. Building prediction model</h2>
 <pre class="r"><code># Load library
-library(caret)</code></pre>
-<pre><code>## Loading required package: lattice</code></pre>
-<pre><code>## Loading required package: ggplot2</code></pre>
-<pre class="r"><code>library(doParallel)</code></pre>
-<pre><code>## Loading required package: foreach</code></pre>
-<pre><code>## Loading required package: iterators</code></pre>
-<pre><code>## Loading required package: parallel</code></pre>
-<pre class="r"><code>library(xgboost)</code></pre>
+library(caret)
+library(doParallel)
+library(xgboost)</code></pre>
 <pre class="r"><code># Split data into training and testing set
 classeIndex &lt;- which(names(df.train) == &quot;classe&quot;)
 trianSet &lt;- createDataPartition(y=df.train$classe, p=0.7, list=FALSE)
@@ -252,8 +246,7 @@ registerDoParallel(cl)
 model &lt;- train(
   classe ~ .,
   data=df.train.training,
-  method='xgbLinear',
-  preProcess = c('center', 'scale'),
+  method='xgbTree',
   trControl = trainControl(method='cv', number=5)
 )
 
@@ -262,7 +255,7 @@ saveRDS(model, file = 'xgboost.rds')
 #model &lt;- readRDS(&quot;xgboost.rds&quot;)
 
 # Stop CPU cores
-#stopCluster(cl)
+stopCluster(cl)
 
 # Make predictions and show confusion matrix and accuracy
 prediction &lt;- predict(model, df.train.testing)
@@ -272,37 +265,38 @@ confusionMatrix(prediction, as.factor(df.train.testing$classe))</code></pre>
 ##           Reference
 ## Prediction    A    B    C    D    E
 ##          A 1674    1    0    0    0
-##          B    0 1138    1    0    0
-##          C    0    0 1025    1    0
-##          D    0    0    0  963    3
-##          E    0    0    0    0 1079
+##          B    0 1138    0    0    0
+##          C    0    0 1026    0    0
+##          D    0    0    0  964    1
+##          E    0    0    0    0 1081
 ## 
 ## Overall Statistics
-##                                           
-##                Accuracy : 0.999           
-##                  95% CI : (0.9978, 0.9996)
-##     No Information Rate : 0.2845          
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
-##                                           
-##                   Kappa : 0.9987          
-##  Mcnemar's Test P-Value : NA              
+##                                      
+##                Accuracy : 0.9997     
+##                  95% CI : (0.9988, 1)
+##     No Information Rate : 0.2845     
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
+##                                      
+##                   Kappa : 0.9996     
+##  Mcnemar's Test P-Value : NA         
 ## 
 ## Statistics by Class:
 ## 
 ##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   0.9991   0.9990   0.9990   0.9972
-## Specificity            0.9998   0.9998   0.9998   0.9994   1.0000
-## Pos Pred Value         0.9994   0.9991   0.9990   0.9969   1.0000
-## Neg Pred Value         1.0000   0.9998   0.9998   0.9998   0.9994
+## Sensitivity            1.0000   0.9991   1.0000   1.0000   0.9991
+## Specificity            0.9998   1.0000   1.0000   0.9998   1.0000
+## Pos Pred Value         0.9994   1.0000   1.0000   0.9990   1.0000
+## Neg Pred Value         1.0000   0.9998   1.0000   1.0000   0.9998
 ## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
-## Detection Rate         0.2845   0.1934   0.1742   0.1636   0.1833
-## Detection Prevalence   0.2846   0.1935   0.1743   0.1641   0.1833
-## Balanced Accuracy      0.9999   0.9995   0.9994   0.9992   0.9986</code></pre>
-<pre class="r"><code>prediction &lt;- predict(model, df.test[,-155], optional=TRUE, na.action = na.omit)
+## Detection Rate         0.2845   0.1934   0.1743   0.1638   0.1837
+## Detection Prevalence   0.2846   0.1934   0.1743   0.1640   0.1837
+## Balanced Accuracy      0.9999   0.9996   1.0000   0.9999   0.9995</code></pre>
+<pre class="r"><code># Make prediction on testing data
+prediction &lt;- predict(model, df.test[,-155], optional=TRUE, na.action = na.omit)
 prediction</code></pre>
 <pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E</code></pre>
-<p>I split the trianing data into 2 sets, 70% for training set and 30% for testing set. I leave the testing data (the 20 rows data given by Cousera) for the last validation. I train the model using XG Boost Linear model with 5 fold cross-validation. The result shows that the model achieve 99% of accuracy. I then apply the model to the testing data (the 20 rows data given by Cousera) and show the results.</p>
+<p>I split the trianing data into 2 sets, 70% for training set and 30% for testing set. I leave the testing data (the 20 rows data given by Cousera) for the last validation. I train the model using eXtreme Gradient Boosting with Decision Trees (xgbTree) model with 5 fold cross-validation. The result shows that the model achieve 99% of accuracy on the testing set. Finally, I apply the model to the testing data (the 20 rows data given by Cousera) and show the results.</p>
 </div>
 
 
