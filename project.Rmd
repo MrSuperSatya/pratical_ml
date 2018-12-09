@@ -1,0 +1,95 @@
+---
+title: "Prediction Assignment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Introduction
+
+The goal of this project is to predict the manner in which people did the exercise. I will describe how I build the model, how I use cross validation and the expected out of sample error. I will also use my prediction model to predict 20 different test cases.
+
+## 2. Data preprocessing
+
+```{r}
+# Loading data from Excel files
+df.train.raw <- read.csv('pml-training.csv')
+df.test.raw <- read.csv('pml-testing.csv')
+
+# Remove columns with too many NAs
+maxNAcounts <- nrow(df.train.raw) * 1/5
+removeColumns <- colSums(is.na(df.train.raw) | df.train.raw == '') > maxNAcounts
+df.train <- df.train.raw[,-removeColumns]
+df.test  <- df.test.raw[,-removeColumns]
+
+# Remove first column because of the name
+df.train <- df.train[, -1]
+df.test <- df.test[, -1]
+
+# Remove timeptamp variable
+removeColumns <- grep("timestamp", names(df.train))
+df.train <- df.train[, -removeColumns]
+df.test <- df.test[, -removeColumns]
+
+# Convert all variables to numeric
+df.train <- data.frame(data.matrix(df.train))
+df.test <- data.frame(data.matrix(df.test))
+#sapply(df.train, class)
+
+# Fill NAs with mean
+NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+NA2zero <- function(x) replace(x, is.na(x), 0)
+df.train[] <- lapply(df.train, NA2mean)
+df.test[] <- lapply(df.test, NA2zero)
+df.train$classe <- as.factor(df.train.raw$classe)
+```
+
+First, I load data from the CSV files given by Cousera. Then I remove the columns that contains more than 1/5 of the total number of rows. I also remove the first column which name of the participants. I also remove the 'timestamp' columns that are not useful for prediction. Finally, we fill all NAs with the mean values.
+
+## 3. Building prediction model
+
+```{r}
+# Load library
+library(caret)
+library(doParallel)
+library(xgboost)
+```
+
+```{r}
+# Split data into training and testing set
+classeIndex <- which(names(df.train) == "classe")
+trianSet <- createDataPartition(y=df.train$classe, p=0.7, list=FALSE)
+df.train.training <- df.train[trianSet, ]
+df.train.testing <- df.train[-trianSet, ]
+
+# Register CPU cores
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+
+# Creating a XG Boost linear model
+model <- train(
+  classe ~ .,
+  data=df.train.training,
+  method='xgbLinear',
+  preProcess = c('center', 'scale'),
+  trControl = trainControl(method='cv', number=5)
+)
+
+# Save model to file
+saveRDS(model, file = 'xgboost.rds')
+#model <- readRDS("xgboost.rds")
+
+# Stop CPU cores
+#stopCluster(cl)
+
+# Make predictions and show confusion matrix and accuracy
+prediction <- predict(model, df.train.testing)
+confusionMatrix(prediction, as.factor(df.train.testing$classe))
+
+prediction <- predict(model, df.test[,-155], optional=TRUE, na.action = na.omit)
+prediction
+```
+
+I split the trianing data into 2 sets, 70% for training set and 30% for testing set. I leave the testing data (the 20 rows data given by Cousera) for the last validation. I train the model using XG Boost Linear model with 5 fold cross-validation. The result shows that the model achieve 99% of accuracy. I then apply the model to the testing data (the 20 rows data given by Cousera) and show the results.
