@@ -24,11 +24,11 @@ removeColumns <- colSums(is.na(df.train.raw) | df.train.raw == '') > maxNAcounts
 df.train <- df.train.raw[,-removeColumns]
 df.test  <- df.test.raw[,-removeColumns]
 
-# Remove first column because of the name
+# Remove first column because of the name (not useful for prediction)
 df.train <- df.train[, -1]
 df.test <- df.test[, -1]
 
-# Remove timeptamp variable
+# Remove timeptamp variable (not useful for prediction)
 removeColumns <- grep("timestamp", names(df.train))
 df.train <- df.train[, -removeColumns]
 df.test <- df.test[, -removeColumns]
@@ -38,7 +38,7 @@ df.train <- data.frame(data.matrix(df.train))
 df.test <- data.frame(data.matrix(df.test))
 #sapply(df.train, class)
 
-# Fill NAs with mean
+# Fill NAs with mean for training set and zero for test set
 NA2mean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
 NA2zero <- function(x) replace(x, is.na(x), 0)
 df.train[] <- lapply(df.train, NA2mean)
@@ -46,11 +46,11 @@ df.test[] <- lapply(df.test, NA2zero)
 df.train$classe <- as.factor(df.train.raw$classe)
 ```
 
-First, I load data from the CSV files given by Cousera. Then I remove the columns that contains more than 1/5 of the total number of rows. I also remove the first column which name of the participants. I also remove the 'timestamp' columns that are not useful for prediction. Finally, we fill all NAs with the mean values.
+First, I load data from the CSV files given by Cousera. Then I remove the columns that contains more than 1/5 of the total number of rows. I also remove the first column which name of the participants. I also remove the 'timestamp' columns that are not useful for prediction. Finally, we fill all NAs with the mean values for training set and I fill zero for testing set.
 
 ## 3. Building prediction model
 
-```{r}
+```{r message=FALSE}
 # Load library
 library(caret)
 library(doParallel)
@@ -72,8 +72,7 @@ registerDoParallel(cl)
 model <- train(
   classe ~ .,
   data=df.train.training,
-  method='xgbLinear',
-  preProcess = c('center', 'scale'),
+  method='xgbTree',
   trControl = trainControl(method='cv', number=5)
 )
 
@@ -82,14 +81,15 @@ saveRDS(model, file = 'xgboost.rds')
 #model <- readRDS("xgboost.rds")
 
 # Stop CPU cores
-#stopCluster(cl)
+stopCluster(cl)
 
 # Make predictions and show confusion matrix and accuracy
 prediction <- predict(model, df.train.testing)
 confusionMatrix(prediction, as.factor(df.train.testing$classe))
 
+# Make prediction on testing data
 prediction <- predict(model, df.test[,-155], optional=TRUE, na.action = na.omit)
 prediction
 ```
 
-I split the trianing data into 2 sets, 70% for training set and 30% for testing set. I leave the testing data (the 20 rows data given by Cousera) for the last validation. I train the model using XG Boost Linear model with 5 fold cross-validation. The result shows that the model achieve 99% of accuracy. I then apply the model to the testing data (the 20 rows data given by Cousera) and show the results.
+I split the trianing data into 2 sets, 70% for training set and 30% for testing set. I leave the testing data (the 20 rows data given by Cousera) for the last validation. I train the model using eXtreme Gradient Boosting with Decision Trees (xgbTree) model with 5 fold cross-validation. The result shows that the model achieve 99% of accuracy on the testing set. Finally, I apply the model to the testing data (the 20 rows data given by Cousera) and show the results.
